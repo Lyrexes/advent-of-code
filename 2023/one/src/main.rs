@@ -1,6 +1,6 @@
 
 fn main() {
-    let calibration = include_str!("calibration");
+    let calibration = include_str!("calibration.input");
     let calibration_instruction : u32 = calibration.lines()
         .map(|x| x.to_string())
         .map(filter_alphanum)
@@ -9,8 +9,7 @@ fn main() {
         .sum();
     println!("{:?}", calibration_instruction);
 
-    let calibration2 = include_str!("calibration");
-    let calibration_instruction2: u32 = calibration2.lines()
+    let calibration_instruction2: u32 = calibration.lines()
         .map(|x| x.to_string())
         .map(num_string_to_num)
         .map(first_last)    
