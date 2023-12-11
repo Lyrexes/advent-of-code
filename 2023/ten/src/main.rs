@@ -6,18 +6,136 @@ struct Pipe {
     neighbours: Vec<Option<usize>>
 }
 
-fn main() {
-    let pipes = parse_pipes(include_str!("pipes.input"));
-    println!("giatn loop: {:?}", get_giant_loop_length(&pipes) / 2);
+#[derive(Debug)]
+struct Rect {
+    top_left: (usize,usize),
+    bottom_right: (usize,usize)
 }
 
-fn get_giant_loop_length(pipes: &Vec<Pipe>) -> usize {
+fn main() {
+    let pipes_raw = include_str!("pipes.input").split("\n")
+        .filter(|x| !x.is_empty())
+        .map(|x| x.into())
+        .collect::<Vec<Vec<u8>>>();
+    let pipes = parse_pipes(&pipes_raw);
+    let giant_loop = get_giant_loop_length(&pipes);
+    println!("giatn loop: {:?}", giant_loop.len() / 2);
+    println!(
+        "rect around loop: {:?}", 
+         get_rect_around_loop(&giant_loop, &pipes_raw)
+    );
+    
+}
+
+fn get_fully_enclosed_by(giant_loop: &Vec<usize>, pipes_raw: &Vec<Vec<u8>>) 
+    -> Vec<usize> {
+    let rect = get_rect_around_loop(&giant_loop, &pipes_raw);
+    let loop_indices: HashSet<usize> = HashSet::from_iter(
+        giant_loop.iter().cloned()
+    );
+    let mut visited: HashSet<usize> = HashSet::new();
+    let mut enclosed = vec![];
+    
+    for row in rect.top_left.0..rect.bottom_right.0 {
+        for column in rect.top_left.1..rect.bottom_right.1 {
+            if visited.contains(&(row * pipes_raw.len() + column)) {
+                continue;
+            }
+            search_for_exit(
+                row, 
+                column,
+                &mut visited,
+                &mut enclosed, 
+                &loop_indices,
+                &rect
+            );
+        }
+    }
+    enclosed
+}
+
+fn search_for_exit(row: usize, column: usize, visited: &mut HashSet<usize>,
+                   enclosed: &mut Vec<usize>, loop_indices: &HashSet<usize>,
+                   border: &Rect) {
+
+    let mut current_visited = HashSet::new();
+    let mut to_be_visited = HashSet::new();
+    to_be_visited.insert((row,column));
+    let mut current_node;
+    loop {
+        if to_be_visited.is_empty() {
+            break;
+        }
+            
+        current_node = to_be_visited.take(
+            &to_be_visited.iter().nth(0).unwrap().clone()
+        ).unwrap();
+
+        if is_adjacent_to_border(&current_node, border) {
+            enclosed.clear();
+            return;
+        }
+
+        to_be_visited.extend(
+            get_neighbours_node(
+                &current_node, 
+                &current_visited, 
+                &loop_indices
+            ).iter()
+        )
+    }
+}
+
+fn get_neighbours_node(current_node: &(usize, usize), 
+                       current_visited: &HashSet<usize>, 
+                       loop_indices: &HashSet<usize>) -> Vec<(usize,usize)> {
+    let mut neighbors = vec![];
+    let mut current_neighbor;
+    for row_add in [-1,1] {
+        for column_add in [-1,1] {
+            
+        }
+    }
+    todo!()
+}
+
+fn is_adjacent_to_border(current_node: &(usize, usize), border: &Rect) -> bool {
+    todo!()
+}
+
+
+fn get_rect_around_loop(giant_loop: &Vec<usize>, pipes_raw: &Vec<Vec<u8>>)
+    -> Rect {
+    let left = giant_loop.iter()
+        .map(|&x| x % pipes_raw.len())
+        .min()
+        .unwrap();
+    let right = giant_loop.iter()
+        .map(|&x| x % pipes_raw.len())
+        .max()
+        .unwrap();
+    let top = giant_loop.iter()
+        .map(|x| x / pipes_raw.len())
+        .inspect(|x| println!("{}", x))
+        .min()
+        .unwrap();
+    let bottom = giant_loop.iter()
+        .map(|x| x / pipes_raw.len())
+        .max()
+        .unwrap();
+    Rect {
+        top_left: (top, left),
+        bottom_right: (bottom, right)
+    }
+}   
+
+fn get_giant_loop_length(pipes: &Vec<Pipe>) -> Vec<usize> {
     let start_index = pipes.iter().position(|x| x.pipe_kind == b'S').unwrap();
-    let mut cycles_length = vec![];
+    let mut cycles = vec![];
     for &start_neighbour in pipes[start_index].neighbours.iter().flatten() {
         let mut current_pipe = start_neighbour;
         let mut previous_pipe = start_index;
-        let mut cycle_counter = 1;
+        let mut current_cycle = vec![start_index];
         while pipes[current_pipe].pipe_kind != b'S' {
 
             let maybe_next_pipe = pipes[current_pipe].neighbours.iter()
@@ -25,25 +143,21 @@ fn get_giant_loop_length(pipes: &Vec<Pipe>) -> usize {
                 .position(|&x| x != previous_pipe)
                 .map(|x| pipes[current_pipe].neighbours[x].unwrap());
 
-            if let Some(pipe) = maybe_next_pipe{
+            if let Some(pipe) = maybe_next_pipe {
                 previous_pipe = current_pipe;
                 current_pipe = pipe;
             } else {
-                cycle_counter = 0;
+                current_cycle.clear();
                 break
             }
-            cycle_counter += 1;
+            current_cycle.push(current_pipe)
         }
-        cycles_length.push(cycle_counter);
+        cycles.push(current_cycle);
     }
-    *cycles_length.iter().max().unwrap() as usize
+    cycles.into_iter().max_by_key(|x| x.len()).unwrap()
 }
 
-fn parse_pipes(raw: &str) -> Vec<Pipe> {
-    let pipes_raw = raw.split("\n")
-        .filter(|x| !x.is_empty())
-        .map(|x| x.into())
-        .collect::<Vec<Vec<u8>>>();
+fn parse_pipes(pipes_raw: &Vec<Vec<u8>>) -> Vec<Pipe> {
 
     let mut pipes = vec![Pipe::default();pipes_raw.len() * pipes_raw[0].len()];
 
@@ -58,7 +172,7 @@ fn parse_pipes(raw: &str) -> Vec<Pipe> {
                 b'7' => pipes[i] = south_west_bend(&pipes_raw, row, column),
                 b'F' => pipes[i] = south_east_bend(&pipes_raw, row, column),
                 b'S' => pipes[i] = start_pipe(&pipes_raw, row, column),
-                _ => pipes[i] = ground(&pipes_raw, row, column)
+                _ => {}
             }
         }
     }
@@ -138,22 +252,6 @@ fn start_pipe(matrix: &Vec<Vec<u8>>, row: usize, column: usize) -> Pipe {
             get_neighbour(matrix, row as i64, column as i64 - 1),
             get_neighbour(matrix, row as i64 + 1, column as i64),
             get_neighbour(matrix, row as i64 - 1, column as i64)
-        ]
-    }
-}
-
-fn ground(matrix: &Vec<Vec<u8>>, row: usize, column: usize) -> Pipe {
-    Pipe {
-        pipe_kind: b'.',
-        neighbours: vec![
-            get_neighbour(matrix, row as i64, column as i64 + 1),
-            get_neighbour(matrix, row as i64, column as i64 - 1),
-            get_neighbour(matrix, row as i64 + 1, column as i64),
-            get_neighbour(matrix, row as i64 - 1, column as i64),
-            get_neighbour(matrix, row as i64 + 1, column as i64 + 1),
-            get_neighbour(matrix, row as i64 - 1, column as i64 - 1),
-            get_neighbour(matrix, row as i64 + 1, column as i64 - 1),
-            get_neighbour(matrix, row as i64 - 1, column as i64 + 1)
         ]
     }
 }
