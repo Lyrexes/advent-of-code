@@ -13,32 +13,56 @@ struct Rect {
 }
 
 fn main() {
-    let pipes_raw = include_str!("pipes.input").split("\n")
+    let pipes_raw = include_str!("pipes-test.input").split("\n")
         .filter(|x| !x.is_empty())
         .map(|x| x.into())
         .collect::<Vec<Vec<u8>>>();
     let pipes = parse_pipes(&pipes_raw);
     let giant_loop = get_giant_loop_length(&pipes);
-    println!("giatn loop: {:?}", giant_loop.len() / 2);
+    println!("giatn loop half length: {:?}", giant_loop.len() / 2);
+    println!("giant loop: {:?}", giant_loop.iter()
+             .map(|x| pipes[*x].pipe_kind as char )
+             .collect::<Vec<char>>());
     println!(
         "rect around loop: {:?}", 
          get_rect_around_loop(&giant_loop, &pipes_raw)
     );
-    
+    let x = get_fully_enclosed_by(&giant_loop, &pipes_raw);
+    println!("enclosed: {:?}", x.len());
+    draw(&giant_loop, &pipes_raw, &x);
+}
+
+fn draw(giant_loop: &Vec<usize>, pipes_raw: &Vec<Vec<u8>>, 
+        enclosed: &Vec<usize>) {
+    for row in 0..pipes_raw.len() {
+        for column in 0..pipes_raw[0].len() {
+            if enclosed.contains(&(row * pipes_raw[0].len() + column)) {
+                print!("I");
+            } else if giant_loop.contains(&(row * pipes_raw[0].len() + column)) {
+                print!("*");
+            } else {
+                print!("{}", pipes_raw[row][column] as char)
+            }
+        }
+        print!("\n");
+    }
+
 }
 
 fn get_fully_enclosed_by(giant_loop: &Vec<usize>, pipes_raw: &Vec<Vec<u8>>) 
     -> Vec<usize> {
     let rect = get_rect_around_loop(&giant_loop, &pipes_raw);
-    let loop_indices: HashSet<usize> = HashSet::from_iter(
-        giant_loop.iter().cloned()
+    let loop_indices = HashSet::from_iter(
+        giant_loop.iter().map(|x| (x / pipes_raw[0].len(), x % pipes_raw[0].len()))
     );
-    let mut visited: HashSet<usize> = HashSet::new();
+    let mut visited: HashSet<(usize,usize)> = HashSet::from_iter(
+        loop_indices.iter().cloned()
+    );
     let mut enclosed = vec![];
     
     for row in rect.top_left.0..rect.bottom_right.0 {
         for column in rect.top_left.1..rect.bottom_right.1 {
-            if visited.contains(&(row * pipes_raw.len() + column)) {
+            if visited.contains(&(row, column)) {
                 continue;
             }
             search_for_exit(
@@ -51,31 +75,39 @@ fn get_fully_enclosed_by(giant_loop: &Vec<usize>, pipes_raw: &Vec<Vec<u8>>)
             );
         }
     }
-    enclosed
+    enclosed.into_iter().map(|x| x.0 * pipes_raw[0].len() + x.1).collect()
 }
 
-fn search_for_exit(row: usize, column: usize, visited: &mut HashSet<usize>,
-                   enclosed: &mut Vec<usize>, loop_indices: &HashSet<usize>,
-                   border: &Rect) {
+fn search_for_exit(row: usize, column: usize, 
+                   visited: &mut HashSet<(usize,usize)>,
+                   enclosed: &mut Vec<(usize,usize)>, 
+                   loop_indices: &HashSet<(usize,usize)>, border: &Rect) {
 
     let mut current_visited = HashSet::new();
     let mut to_be_visited = HashSet::new();
-    to_be_visited.insert((row,column));
     let mut current_node;
+    to_be_visited.insert((row,column));
     loop {
+
         if to_be_visited.is_empty() {
-            break;
+            enclosed.extend(current_visited.iter());
+            visited.extend(current_visited.iter());
+            println!("enclosed: {:?}", (row,column));
+            return;
         }
-            
+
         current_node = to_be_visited.take(
             &to_be_visited.iter().nth(0).unwrap().clone()
         ).unwrap();
 
+
         if is_adjacent_to_border(&current_node, border) {
-            enclosed.clear();
+            visited.extend(current_visited.iter());
+            println!("not enclosed: {:?}", (row,column));
             return;
         }
 
+        current_visited.insert(current_node);
         to_be_visited.extend(
             get_neighbours_node(
                 &current_node, 
@@ -86,21 +118,33 @@ fn search_for_exit(row: usize, column: usize, visited: &mut HashSet<usize>,
     }
 }
 
-fn get_neighbours_node(current_node: &(usize, usize), 
-                       current_visited: &HashSet<usize>, 
-                       loop_indices: &HashSet<usize>) -> Vec<(usize,usize)> {
+fn get_neighbours_node(current_node: &(usize,usize), 
+                       current_visited: &HashSet<(usize,usize)>, 
+                       loop_indices: &HashSet<(usize,usize)>)
+    -> Vec<(usize,usize)> {
     let mut neighbors = vec![];
     let mut current_neighbor;
-    for row_add in [-1,1] {
-        for column_add in [-1,1] {
+    for row_add in [-1,0,1] {
+        for column_add in [-1,0,1] {
+            current_neighbor = (
+                (current_node.0 as i64 + row_add) as usize,
+                (current_node.1 as i64 + column_add) as usize
+            );
+            if !loop_indices.contains(&current_neighbor) &&
+                !current_visited.contains(&current_neighbor) {
+                neighbors.push(current_neighbor)
+            }
             
         }
     }
-    todo!()
+    neighbors
 }
 
 fn is_adjacent_to_border(current_node: &(usize, usize), border: &Rect) -> bool {
-    todo!()
+    current_node.0  < border.top_left.0 ||
+        current_node.1 < border.top_left.1 ||
+        current_node.0 > border.bottom_right.0 ||
+        current_node.1 > border.bottom_right.1
 }
 
 
@@ -116,7 +160,6 @@ fn get_rect_around_loop(giant_loop: &Vec<usize>, pipes_raw: &Vec<Vec<u8>>)
         .unwrap();
     let top = giant_loop.iter()
         .map(|x| x / pipes_raw.len())
-        .inspect(|x| println!("{}", x))
         .min()
         .unwrap();
     let bottom = giant_loop.iter()
@@ -135,7 +178,7 @@ fn get_giant_loop_length(pipes: &Vec<Pipe>) -> Vec<usize> {
     for &start_neighbour in pipes[start_index].neighbours.iter().flatten() {
         let mut current_pipe = start_neighbour;
         let mut previous_pipe = start_index;
-        let mut current_cycle = vec![start_index];
+        let mut current_cycle = vec![start_neighbour];
         while pipes[current_pipe].pipe_kind != b'S' {
 
             let maybe_next_pipe = pipes[current_pipe].neighbours.iter()
